@@ -5,6 +5,19 @@
         <style>
             body {padding-top:16px; padding-left:20px;}
             .relax {padding-top:4px; padding-bottom:4px;}
+            #overlay {
+               position: fixed;
+               left: 0;
+               top: 0;
+               right: 0;
+               bottom: 0;
+               background: rgba(255,255,255,0.8);
+               color: black;
+               font-size: large;
+               display: flex;
+               justify-content: center;
+               align-items: center;
+            }
         </style>
     </head>
     <body>
@@ -95,11 +108,28 @@
              modeling the audio spectrum of a musical signal as mixture of gaussians after frequency remapping. I hope to show 
              it some much needed love when time is available, cleanup the code, speed it up, fix bugs, etc. <b>Absolutely NO 
              guarantees</b> of utility, let alone bug-freeness for now! - Kumar (12 July 2012)</div>
-         <script src="waveform.js"></script>
-         <script src="gmm.js"></script>
+         <div id="overlay">
+            <span>Click to start</span>
+         </div>
          <script>
-             Transcribe.configure_file_picker('mp3_file');
-             Transcribe.configure_spectral_scanner('spectral_scan');
+            function loadScript(src) {
+               return new Promise((res, rej) => {
+                  const script = document.createElement('script');
+                  script.onload = () => res();
+                  script.src = src;
+                  document.body.appendChild(script);
+               });
+            }
+
+            const overlay = document.getElementById('overlay');
+            overlay.addEventListener('click', async () => {
+               overlay.parentNode.removeChild(overlay);
+               window.audioContext = new AudioContext();
+               await loadScript('waveform.js');
+               await loadScript('gmm.js');
+               Transcribe.configure_file_picker('mp3_file');
+               Transcribe.configure_spectral_scanner('spectral_scan');
+            }, false);
          </script>
     </body>
 </html>

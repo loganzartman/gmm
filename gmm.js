@@ -85,7 +85,7 @@ var Transcribe = (function (exports, Math, Date) {
     var declim = [0, 1, 2, 3, 4, 5].map(decimal_limiter);
     var refFreq_Hz = 158.5, refFreqLow_Hz = refFreq_Hz / 4, refFreqHigh_Hz = refFreq_Hz *  16;
     var enable = true;
-    var audio_context = new webkitAudioContext();
+    var audio_context = window.audioContext;
     var k_lpf_iterations = 2;
 
     // Calculates the periodicity of the signal at the
@@ -1141,18 +1141,18 @@ var Transcribe = (function (exports, Math, Date) {
         }
 
         // Add a new gaussian. Weight, mean and precision given.
-        function add(w, µ, Ω) {
+        function add(w, mu, omega) {
             var w2, m2, p2, n2;
             if (N < Nmax) {
                 weight[N] = w;
-                mean[N] = µ;
-                precision[N] = Ω;
-                norm[N] = Math.sqrt(Ω / (2 * Math.PI));
+                mean[N] = mu;
+                precision[N] = omega;
+                norm[N] = Math.sqrt(omega / (2 * Math.PI));
                 ++N;
                 me.length = N;
                 return me;
             } else {
-                return realloc(Nmax * 2).add(w, µ, Ω);
+                return realloc(Nmax * 2).add(w, mu, omega);
             }
         };
 
@@ -1430,13 +1430,13 @@ var Transcribe = (function (exports, Math, Date) {
             return this; 
         }
 
-        var i, j, N, len, f, rf, p, w, µ, σ, m, e, v, reiterate = false;
+        var i, j, N, len, f, rf, p, w, mu, σ, m, e, v, reiterate = false;
         var dfs = 0.001 * spectrum.df;
         var new_model = new GaussianMixtureModel();
 
         for (i = 0, N = this.length; i < N; ++i) {
             w = 0;
-            µ = 0;
+            mu = 0;
             σ = 0;
             e = 0;
             //m = model[i];
@@ -1460,17 +1460,17 @@ var Transcribe = (function (exports, Math, Date) {
                 p *= spectrum.energy[j];
                 rf = this.__sub_harmonic;
                 w += p;
-                µ += p * rf;
+                mu += p * rf;
                 σ += p * rf * rf;
             }
 
             if (isNaN(w)) { debugger; }
 
             if (w / (e * this.weight(i))  > 0.00001) {
-                µ /= w;
-                σ = Math.max(1e-10, (σ / w) - µ * µ);
+                mu /= w;
+                σ = Math.max(1e-10, (σ / w) - mu * mu);
                 w /= e;
-                new_model.add(w, µ, 1/σ);
+                new_model.add(w, mu, 1/σ);
             } else {
                 //debugger;
             }
@@ -1567,14 +1567,14 @@ var Transcribe = (function (exports, Math, Date) {
     // Note that the product of two gaussian models is another
     // gaussian and obeys the following formula -
     //
-    // g1 = [w1, µ1, σ1]
-    // g2 = [w2, µ2, σ2]
+    // g1 = [w1, mu1, σ1]
+    // g2 = [w2, mu2, σ2]
     //
-    // then G = g1 x g2 = [w, µ, σ] where
+    // then G = g1 x g2 = [w, mu, σ] where
     // 1/σ = 1/σ1 + 1/σ2
-    // <µ> = σ(µ1/σ1 + µ2/σ2)
-    // <µ^2> = σ(µ1^2/σ1 + µ2^2/σ2)
-    // w = {w1w2 / √(2π(σ1 + σ2))} x e^-((1/2σ)(<µ^2> - <µ>^2))
+    // <mu> = σ(mu1/σ1 + mu2/σ2)
+    // <mu^2> = σ(mu1^2/σ1 + mu2^2/σ2)
+    // w = {w1w2 / √(2π(σ1 + σ2))} x e^-((1/2σ)(<mu^2> - <mu>^2))
     //
     // Note: Remember that in this code, we use σ to denote the square of
     // the standard deviation.
@@ -1586,17 +1586,17 @@ var Transcribe = (function (exports, Math, Date) {
         }
 
         var g = new GaussianMixtureModel();
-        var i, w, µ, µ1, µ2, µµ, p;
+        var i, w, mu, mu1, mu2, mumu, p;
         for (i = 0; i < m1.length; ++i) {
             p = m1.precision(i) + m2.precision(i);
-            µ1 = m1.mean(i);
-            µ2 = m2.mean(i);
-            µ = (µ1 * m1.precision(i) + µ2 * m2.precision(i)) / p;
-            µµ = (µ1 * µ1 * m1.precision(i) + µ2 * µ2 * m2.precision(i)) / p;
+            mu1 = m1.mean(i);
+            mu2 = m2.mean(i);
+            mu = (mu1 * m1.precision(i) + mu2 * m2.precision(i)) / p;
+            mumu = (mu1 * mu1 * m1.precision(i) + mu2 * mu2 * m2.precision(i)) / p;
             //          w = m1.weight(i) * m2.weight(i) / Math.sqrt(2 * Math.PI * (1 / m1.precision(i) + 1 / m2.precision(i)));
-            w = m1.weight(i) * m2.weight(i) * Math.exp(- 0.5 * p * (µµ - µ * µ));
+            w = m1.weight(i) * m2.weight(i) * Math.exp(- 0.5 * p * (mumu - mu * mu));
 
-            g.add(w, µ, p);
+            g.add(w, mu, p);
         }
 
         return g;
@@ -1623,23 +1623,23 @@ var Transcribe = (function (exports, Math, Date) {
 
         var normfactor = Math.sqrt(GMM.relatedness(m1, m1, tolerance) * GMM.relatedness(m2, m2, tolerance));
 
-        var i, j, N1, N2, w, w1, µ, lµ, µ1, µ2, µµ, lµµ, p, p1, p2, lp, lp1, lp2;
+        var i, j, N1, N2, w, w1, mu, lmu, mu1, mu2, mumu, lmumu, p, p1, p2, lp, lp1, lp2;
         for (i = 0, N1 = m1.length; i < N1; ++i) {
             p1 = m1.precision(i);
             lp1 = Math.min(maxprec, p1);
-            µ1 = m1.mean(i);
+            mu1 = m1.mean(i);
             w1 = m1.weight(i);
             for (j = 0, N2 = m2.length; j < N2; ++j) {
                 p2 = m2.precision(j);
                 lp2 = Math.min(maxprec, p2);
                 lp = lp1 + lp2;
-                µ2 = m2.mean(j);
-                lµ = (µ1 * lp1 + µ2 * lp2) / lp;
-                lµµ = (µ1 * µ1 * lp1 + µ2 * µ2 * lp2) / lp;
+                mu2 = m2.mean(j);
+                lmu = (mu1 * lp1 + mu2 * lp2) / lp;
+                lmumu = (mu1 * mu1 * lp1 + mu2 * mu2 * lp2) / lp;
                 //          w = m1.weight(i) * m2.weight(i) / Math.sqrt(2 * Math.PI * (1 / m1.precision(i) + 1 / m2.precision(i)));
-                w = w1 * m2.weight(j) * Math.exp(- 0.5 * lp * (lµµ - lµ * lµ));
+                w = w1 * m2.weight(j) * Math.exp(- 0.5 * lp * (lmumu - lmu * lmu));
 
-                g.add(w / normfactor, (µ1 * p1 + µ2 * p2) / (p1 + p2), p1 + p2);
+                g.add(w / normfactor, (mu1 * p1 + mu2 * p2) / (p1 + p2), p1 + p2);
             }
         }
 
@@ -1661,20 +1661,20 @@ var Transcribe = (function (exports, Math, Date) {
 
         tolerance = tolerance ? tolerance : 1e-5;
         var maxprec = 1 / (tolerance * tolerance);
-        var i, j, N1, N2, w1, µ, µ1, µ2, µµ, p, p1, p2, w, wa, wb, wanorm = 0, wbnorm = 0, wsum = 0, wnorm = 0;
+        var i, j, N1, N2, w1, mu, mu1, mu2, mumu, p, p1, p2, w, wa, wb, wanorm = 0, wbnorm = 0, wsum = 0, wnorm = 0;
 
         for (i = 0, N1 = m1.length; i < N1; ++i) {
             p1 = Math.min(maxprec, m1.precision(i));
-            µ1 = m1.mean(i);
+            mu1 = m1.mean(i);
             w1 = m1.weight(i);
             for (j = 0, N2 = m2.length; j < N2; ++j) {
                 p2 = Math.min(maxprec, m2.precision(j));
                 p = p1 + p2;
-                µ2 = m2.mean(j);
-                µ = (µ1 * p1 + µ2 * p2) / p;
-                µµ = (µ1 * µ1 * p1 + µ2 * µ2 * p2) / p;
+                mu2 = m2.mean(j);
+                mu = (mu1 * p1 + mu2 * p2) / p;
+                mumu = (mu1 * mu1 * p1 + mu2 * mu2 * p2) / p;
                 wa = w1 * m2.weight(j);
-                wb = Math.exp(- 0.5 * p * (µµ - µ * µ));
+                wb = Math.exp(- 0.5 * p * (mumu - mu * mu));
                 wsum += wa * wb;
                 wnorm += wa;
             }
@@ -1710,7 +1710,7 @@ var Transcribe = (function (exports, Math, Date) {
     // Returns an array of gaussians.
     function guess_peaks(spectrum) {
         // Find all the peaks in the scan range.
-        var len, a, µ, σ, e, s1, s2, s3, f0, df, f1, f2, f3;
+        var len, a, mu, σ, e, s1, s2, s3, f0, df, f1, f2, f3;
         var energy = spectrum.reassigned_energy;
         var model = new GaussianMixtureModel();
 
@@ -1725,9 +1725,9 @@ var Transcribe = (function (exports, Math, Date) {
                 // We have a local peak.
                 a = energy[i];// / spectrum.power;
                 e = Math.max(0.0001, s1 + s2 + s3);
-                µ = (s1 * f1 + s2 * f2 + s3 * f3) / e;
-                σ = (s1 * f1 * f1 + s2 * f2 * f2 + s3 * f3 * f3) / e - µ * µ;
-                model.add(a, µ, 1/σ);
+                mu = (s1 * f1 + s2 * f2 + s3 * f3) / e;
+                σ = (s1 * f1 * f1 + s2 * f2 * f2 + s3 * f3 * f3) / e - mu * mu;
+                model.add(a, mu, 1/σ);
             }
         }
 
@@ -1780,9 +1780,9 @@ var Transcribe = (function (exports, Math, Date) {
     // value everywhere, I just decided to avoid the squaring altogether
     // and use the squared value itself everywhere. Even the iteration
     // for the gaussian mixture model computes the squared value only.
-    function gaussian(x, w, µ, σ) {
+    function gaussian(x, w, mu, σ) {
         var s = Math.max(0.00001, σ);
-        return w * Math.exp(- (x - µ) * (x - µ) / (2 * s)) / Math.sqrt(2 * Math.PI * s);
+        return w * Math.exp(- (x - mu) * (x - mu) / (2 * s)) / Math.sqrt(2 * Math.PI * s);
     }
 
     function decreasing_weight_order(a, b) { return b[0] - a[0]; }
@@ -2132,7 +2132,7 @@ var Transcribe = (function (exports, Math, Date) {
         var spectrum_ix = 0;
         var spectrum;
         var tracked_peaks = [], peak_set, peaks, model, tracking_info, coverage_before, coverage_after, spectrum;
-        var i, len, stats, w1, w2, stats_i, µ, σ, p, n, pt, pf;
+        var i, len, stats, w1, w2, stats_i, mu, σ, p, n, pt, pf;
         var now_at = elem('now_at');
 
         function tracker() {
@@ -2183,7 +2183,7 @@ var Transcribe = (function (exports, Math, Date) {
                 // mean, mean of sqaure, and update weight of tracking probability in dB
                 // mean, mean of square and update weight of peak shift in cents.
                 // These are stored as -
-                // [[µT, µµT, wT], [µP, sP, wP]]
+                // [[muT, mumuT, wT], [muP, sP, wP]]
                 var track = tracked_peaks[tracked_peaks.length - 1];
                 if (!track.tracking_stats) {
                     // If any of the tracking probabilities are below the
@@ -2231,12 +2231,12 @@ var Transcribe = (function (exports, Math, Date) {
                     // the new tracking info is too unlikely.
                     for (i = 0, len = tracking_info.length, n = 0; i < len; ++i) {
                         stats_i = stats[i];
-                        µ = stats_i[0][0];
-                        σ = Math.max(0.25, stats_i[0][1] - µ * µ);
-                        p = gaussian(tracking_info.probability_db[i], Math.sqrt(2 * Math.PI * σ), µ, σ);
-                        µ = stats_i[1][0];
-                        σ = Math.max(500, stats_i[1][1] - µ * µ);
-                        p *= gaussian(tracking_info.df_st[i], Math.sqrt(2 * Math.PI * σ), µ, σ);
+                        mu = stats_i[0][0];
+                        σ = Math.max(0.25, stats_i[0][1] - mu * mu);
+                        p = gaussian(tracking_info.probability_db[i], Math.sqrt(2 * Math.PI * σ), mu, σ);
+                        mu = stats_i[1][0];
+                        σ = Math.max(500, stats_i[1][1] - mu * mu);
+                        p *= gaussian(tracking_info.df_st[i], Math.sqrt(2 * Math.PI * σ), mu, σ);
 
                         n += p * peaks.weight(i);  // Weight the tracking support probability by the 
                         // gaussian's own weight so that the most important
@@ -2407,29 +2407,29 @@ var Transcribe = (function (exports, Math, Date) {
     // Note that the product of two gaussian models is another
     // gaussian and obeys the following formula -
     //
-    // g1 = [w1, µ1, σ1]
-    // g2 = [w2, µ2, σ2]
+    // g1 = [w1, mu1, σ1]
+    // g2 = [w2, mu2, σ2]
     //
-    // then G = g1 x g2 = [w, µ, σ] where
+    // then G = g1 x g2 = [w, mu, σ] where
     // 1/σ = 1/σ1 + 1/σ2
-    // <µ> = σ(µ1/σ1 + µ2/σ2)
-    // <µ^2> = σ(µ1^2/σ1 + µ2^2/σ2)
-    // w = {w1w2 / √(2π(σ1 + σ2))} x e^-((1/2σ)(<µ^2> - <µ>^2))
+    // <mu> = σ(mu1/σ1 + mu2/σ2)
+    // <mu^2> = σ(mu1^2/σ1 + mu2^2/σ2)
+    // w = {w1w2 / √(2π(σ1 + σ2))} x e^-((1/2σ)(<mu^2> - <mu>^2))
     //
     // Note: Remember that in this code, we use σ to denote the square of
     // the standard deviation.
     //
     function multiply_gaussians(g1, g2) {
-        var w1 = g1[0], µ1 = g1[1], σ1 = g1[2];
-        var w2 = g2[0], µ2 = g2[1], σ2 = g2[2];
+        var w1 = g1[0], mu1 = g1[1], σ1 = g1[2];
+        var w2 = g2[0], mu2 = g2[1], σ2 = g2[2];
 
         var σ = σ1 * σ2 / (σ1 + σ2);
-        var µ = σ * (µ1 / σ1 + µ2 / σ2);
-        var µµ = σ * (µ1 * µ1 / σ1 + µ2 * µ2 / σ2);
-        //        var w = (w1 * w2 / Math.sqrt(2 * Math.PI * (σ1 + σ2))) * Math.exp(- 0.5 * (µµ - µ * µ) / σ);
-        var w = w1 * w2 * Math.exp(- 0.5 * (µµ - µ * µ) / σ);
+        var mu = σ * (mu1 / σ1 + mu2 / σ2);
+        var mumu = σ * (mu1 * mu1 / σ1 + mu2 * mu2 / σ2);
+        //        var w = (w1 * w2 / Math.sqrt(2 * Math.PI * (σ1 + σ2))) * Math.exp(- 0.5 * (mumu - mu * mu) / σ);
+        var w = w1 * w2 * Math.exp(- 0.5 * (mumu - mu * mu) / σ);
 
-        return [w, µ, σ, gaussian(µ, w, µ, σ)];
+        return [w, mu, σ, gaussian(mu, w, mu, σ)];
     }
 
     function geometric_mean_of_gaussians(g1, g2) {
@@ -2477,7 +2477,7 @@ var Transcribe = (function (exports, Math, Date) {
     }
 
     // Takes an array of gaussian model parameters of the form
-    // [w, µ, σ, peak] and returns a new array where the weights
+    // [w, mu, σ, peak] and returns a new array where the weights
     // have all been normalized such that the sum of weights
     // of all the gaussians is unity.
     //
@@ -3063,16 +3063,24 @@ var Transcribe = (function (exports, Math, Date) {
 
     function process_file(file, callback) {
         var reader = new FileReader();
-        reader.onabort = alerter('File read aborted!');
-        reader.onerror = alerter('File read error!');
+        reader.onabort = (e) => {
+            throw new Error('aborted');
+        }
+        reader.onerror = (e) => {
+            throw new Error(e.target.error.message);
+        }
         reader.onload = function () {
             try {
-                var buffer = audio_context.createBuffer(reader.result, true);
-                Waveform.setup(elem('spectrogram'), buffer);
-                callback(buffer);
+                var audioData = reader.result;
+                audio_context.decodeAudioData(audioData, function(buffer) {
+                    Waveform.setup(elem('spectrogram'), buffer);
+                    callback(buffer);
+                }, function(e) {
+                    console.error('Decode Audio Data error', e);
+                });
             } catch (e) {
                 enable = false;
-                reader.onerror(); 
+                throw e;
             }
         };
         reader.readAsArrayBuffer(file);
